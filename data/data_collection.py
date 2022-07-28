@@ -5,49 +5,72 @@ import pandas as pd
 from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException
 from selenium import webdriver
 import time
+import pandas as pdclear
+
+
+from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+import time
 import pandas as pd
 
-
-def get_jobs(keyword, num_jobs, verbose, path, slp_time):
+def get_jobs(keyword, location, num_jobs, verbose, path, slp_time):
     
     '''Gathers jobs as a dataframe, scraped from Glassdoor'''
     
+    #Initializing the webdriver
     options = webdriver.ChromeOptions()
     options.add_experimental_option('excludeSwitches', ['enable-logging'])
-    
     #Uncomment the line below if you'd like to scrape without a new Chrome window every time.
     #options.add_argument('headless')
     
     #Change the path to where chromedriver is in your home folder.
     driver = webdriver.Chrome(executable_path=path, options=options)
     driver.set_window_size(1120, 1000)
+
+
+    driver.get('https://www.glassdoor.com/Job/jobs.htm?suggestCount=0&suggestChosen=false&clickSource=searchBtn&typedKeyword=&sc.keyword=&locT=&locId=&jobType=')
     
-    #url = "https://www.glassdoor.com/Job/jobs.htm?suggestCount=0&suggestChosen=false&clickSource=searchBtn&typedKeyword="+keyword+"&sc.keyword="+keyword+"&locT=&locId=&jobType="
-    url = 'https://www.glassdoor.com/Job/jobs.htm?sc.keyword="' + keyword + '"&locT=C&locId=1147401&locKeyword=San%20Francisco,%20CA&jobType=all&fromAge=-1&minSalary=0&includeNoSalaryJobs=true&radius=100&cityId=-1&minRating=0.0&industryId=-1&sgocId=-1&seniorityType=all&companyId=-1&employerSizes=0&applicationType=0&remoteWorkType=0'
-    driver.get(url)
+    #Uses first variable in function to input job title
+    search = driver.find_element_by_id("KeywordSearch")
+    search.send_keys(keyword)
+    
+    #Uses second variable in function to input Location.  Use 'City,State Abbreviation'
+    search = driver.find_element_by_id("LocationSearch").clear()
+    search = driver.find_element_by_id("LocationSearch")
+    search.send_keys(location)
+    search.send_keys(Keys.RETURN)
+    
+    #Test for the "Sign Up" prompt and get rid of it.
+    time.sleep(slp_time)
+    
+    try:
+                driver.find_element_by_class_name("selected").click()
+    except ElementClickInterceptedException:
+        pass
+    
+    time.sleep(.1)
+    
+    try:
+            driver.find_element_by_css_selector('[alt="Close"]').click()  #clicking to the X.
+    except NoSuchElementException:
+        pass
+    
+    #changes 'posted' dropdown to 'Last Week'
+    driver.find_element_by_id('filter_fromAge').click()
+    time.sleep(5)
+    driver.find_element_by_xpath('.//ul[@class="css-1dv4b0s ew8xong0"]//li[@value="7"]').click()
+   
+    
+    
     jobs = []
 
     while len(jobs) < num_jobs:  #If true, should be still looking for new jobs.
 
         #Let the page load. Change this number based on your internet speed.
-        #Or, wait until the webpage is loaded, instead of hardcoding it.
-        time.sleep(slp_time)
-
-        #Test for the "Sign Up" prompt and get rid of it.
-        try:
-            driver.find_element_by_class_name("selected").click()
-        except ElementClickInterceptedException:
-            pass
-
-        time.sleep(.1)
-
-        try:
-            driver.find_element_by_css_selector('[alt="Close"]').click() #clicking to the X.
-            print(' x out worked')
-        except NoSuchElementException:
-            print(' x out failed')
-            pass
-
+       
+        time.sleep(5)
+        
         
         #Going through each job in this page
         job_buttons = driver.find_elements_by_class_name("jl")  #jl for Job Listing. These are the buttons we're going to click.
@@ -57,7 +80,7 @@ def get_jobs(keyword, num_jobs, verbose, path, slp_time):
             if len(jobs) >= num_jobs:
                 break
 
-            job_button.click()  #You might 
+            driver.execute_script("arguments[0].click();", job_button)  #You might 
             time.sleep(1)
             collected_successfully = False
             
@@ -72,7 +95,8 @@ def get_jobs(keyword, num_jobs, verbose, path, slp_time):
                     time.sleep(5)
 
             try:
-                salary_estimate = driver.find_element_by_xpath('.//span[@class="gray salary"]').text
+                salary_estimate = driver.find_element_by_xpath('.//div[@class = "salary"]').text
+
             except NoSuchElementException:
                 salary_estimate = -1 #You need to set a "not found value. It's important."
             
@@ -95,15 +119,6 @@ def get_jobs(keyword, num_jobs, verbose, path, slp_time):
             #<div class="tab" data-tab-type="overview"><span>Company</span></div>
             try:
                 driver.find_element_by_xpath('.//div[@class="tab" and @data-tab-type="overview"]').click()
-
-                try:
-                    #<div class="infoEntity">
-                    #    <label>Headquarters</label>
-                    #    <span class="value">San Francisco, CA</span>
-                    #</div>
-                    headquarters = driver.find_element_by_xpath('.//div[@class="infoEntity"]//label[text()="Headquarters"]//following-sibling::*').text
-                except NoSuchElementException:
-                    headquarters = -1
 
                 try:
                     size = driver.find_element_by_xpath('.//div[@class="infoEntity"]//label[text()="Size"]//following-sibling::*').text
@@ -135,31 +150,24 @@ def get_jobs(keyword, num_jobs, verbose, path, slp_time):
                 except NoSuchElementException:
                     revenue = -1
 
-                try:
-                    competitors = driver.find_element_by_xpath('.//div[@class="infoEntity"]//label[text()="Competitors"]//following-sibling::*').text
-                except NoSuchElementException:
-                    competitors = -1
 
             except NoSuchElementException:  #Rarely, some job postings do not have the "Company" tab.
-                headquarters = -1
                 size = -1
                 founded = -1
                 type_of_ownership = -1
                 industry = -1
                 sector = -1
                 revenue = -1
-                competitors = -1
+               
 
                 
             if verbose:
-                print("Headquarters: {}".format(headquarters))
                 print("Size: {}".format(size))
                 print("Founded: {}".format(founded))
                 print("Type of Ownership: {}".format(type_of_ownership))
                 print("Industry: {}".format(industry))
                 print("Sector: {}".format(sector))
                 print("Revenue: {}".format(revenue))
-                print("Competitors: {}".format(competitors))
                 print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
 
             jobs.append({"Job Title" : job_title,
@@ -168,17 +176,14 @@ def get_jobs(keyword, num_jobs, verbose, path, slp_time):
             "Rating" : rating,
             "Company Name" : company_name,
             "Location" : location,
-            "Headquarters" : headquarters,
             "Size" : size,
             "Founded" : founded,
             "Type of ownership" : type_of_ownership,
             "Industry" : industry,
             "Sector" : sector,
-            "Revenue" : revenue,
-            "Competitors" : competitors})
+            "Revenue" : revenue,})
             #add job to jobs
-            
-            
+
         #Clicking on the "next page" button
         try:
             driver.find_element_by_xpath('.//li[@class="next"]//a').click()
@@ -188,5 +193,5 @@ def get_jobs(keyword, num_jobs, verbose, path, slp_time):
 
     return pd.DataFrame(jobs)  #This line converts the dictionary object into a pandas DataFrame.
 path="C://Users//Mohamed//Downloads//ds_project//ds_salary_poject//data//chromedriver"   
-df = get_jobs("data scientist", 10, False,path,60)
+df = get_jobs('data scientist', 'Columbus, OH', 39, False, path, 15)
 print(df)
